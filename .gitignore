@@ -1,0 +1,6 @@
+test*
+log*
+build/
+dist/
+*.spec
+ntfy_ip.txt
