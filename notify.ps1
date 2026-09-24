@@ -30,6 +30,11 @@ if (-not $ip) {
 }
 
 $url = "http://${ip}:$Port/$Topic"
-curl.exe -d $Message $url
+curl.exe -sS -d $Message $url
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to send -> $url (is the ntfy server running? Start setup-ntfy.ps1 and keep its window open.)" -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "Sent -> $url" -ForegroundColor Green

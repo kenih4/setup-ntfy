@@ -31,7 +31,7 @@ $trigger = New-ScheduledTaskTrigger -AtLogOn
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName "ntfy-autostart" -Action $action -Trigger $trigger -Principal $principal
 
-登録されているか確認する方法
+タスクが登録されているか確認する方法
 Get-ScheduledTask -TaskName "ntfy-autostart"
 
 ログオンし直さなくても、タスクスケジューラのGUIか、次のコマンドでその場実行できます。
@@ -39,11 +39,15 @@ Start-ScheduledTask -TaskName "ntfy-autostart"
 
 
 タスクを止めたい・削除したい場合
-powershell
 Unregister-ScheduledTask -TaskName "ntfy-autostart" -Confirm:$false
 
 
+テスト通知の送り方
+.\notify.ps1 -Message "テスト"
 
+
+＜状態が Up になっていることを確認します＞
+Get-NetAdapter | Where-Object InterfaceDescription -match Bluetooth
 
 
 ＜PC側の設定について＞

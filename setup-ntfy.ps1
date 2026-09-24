@@ -44,7 +44,9 @@ if (-not $isAdmin) {
 function Get-BluetoothPanInfo {
     $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match "Bluetooth" -and $_.Status -eq "Up" }
     if (-not $adapter) { return $null }
-    $ip = ($adapter | Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue).IPAddress
+    # Ignore APIPA (169.254.x.x): it means DHCP from the phone failed and is unreachable
+    $ip = ($adapter | Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -notlike "169.254.*" } | Select-Object -First 1).IPAddress
     if (-not $ip) { return $null }
     return [PSCustomObject]@{ Adapter = $adapter; IP = $ip }
 }
@@ -74,7 +76,16 @@ if ($btInfo) {
     }
 
     if (-not $btInfo) {
-        Write-Host "Bluetoothネットワークアダプタが見つかりませんでした。" -ForegroundColor Red
+        $btAdapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match "Bluetooth" }
+        if (-not $btAdapter) {
+            Write-Host "Bluetoothネットワークアダプタが見つかりませんでした。" -ForegroundColor Red
+        } elseif ($btAdapter.Status -ne "Up") {
+            Write-Host "Bluetoothネットワークアダプタ（$($btAdapter.Name)）は存在しますが、状態が「$($btAdapter.Status)」です。" -ForegroundColor Red
+            Write-Host "スマホのBluetoothテザリングをONにし、デバイスとプリンターでスマホを右クリック >「接続方法」>「アクセスポイント」を実行してください。" -ForegroundColor Red
+        } else {
+            Write-Host "Bluetoothネットワークアダプタは接続中ですが、有効なIPアドレスを取得できていません（169.254.x.x）。" -ForegroundColor Red
+            Write-Host "スマホのBluetoothテザリングがONになっているか確認してください。" -ForegroundColor Red
+        }
         Write-Host "コントロールパネル > デバイスとプリンター で接続状態を確認してから、もう一度実行してください。" -ForegroundColor Red
         exit 1
     }
