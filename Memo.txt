@@ -42,6 +42,27 @@ Start-ScheduledTask -TaskName "ntfy-autostart"
 Unregister-ScheduledTask -TaskName "ntfy-autostart" -Confirm:$false
 
 
+＜登録済みタスクの設定変更（管理者権限のPowerShellで実行）＞
+・コンソールを表示する（-WindowStyle Hidden を外す）
+・エラーで止まってもウィンドウを残す（-NoExit）
+・バッテリー駆動でも開始・継続する
+・実行時間の上限（既定72時間）をなくす
+※ウィンドウを閉じるとntfyサーバーも止まるので、邪魔なら最小化する
+
+実行中のタスクを止める（入力待ちで止まっている場合など）
+Stop-ScheduledTask -TaskName "ntfy-autostart"
+
+設定を変更する
+$scriptPath = "C:\Users\kenic\Dropbox\gitdir\setup-ntfy\setup-ntfy.ps1"
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoExit -ExecutionPolicy Bypass -File `"$scriptPath`""
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+Set-ScheduledTask -TaskName "ntfy-autostart" -Action $action -Settings $settings
+
+変更内容を確認する
+(Get-ScheduledTask -TaskName "ntfy-autostart").Actions.Arguments
+(Get-ScheduledTask -TaskName "ntfy-autostart").Settings | Format-List DisallowStartIfOnBatteries, StopIfGoingOnBatteries, ExecutionTimeLimit
+
+
 テスト通知の送り方
 .\notify.ps1 -Message "テスト"
 
