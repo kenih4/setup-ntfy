@@ -16,7 +16,7 @@ $utf8Bom = New-Object System.Text.UTF8Encoding $true
 
 
 
-powershell -ExecutionPolicy Bypass -File .\setup-ntfy.ps1
+powershell -ExecutionPolicy Bypass -File C:\Users\kenic\Dropbox\gitdir\setup-ntfy\setup-ntfy.ps1
 
 
 
