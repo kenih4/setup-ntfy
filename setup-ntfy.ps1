@@ -4,14 +4,14 @@
   Manual steps to do first (one-time):
     1. Pair PC and phone via Bluetooth
     2. Turn ON Bluetooth tethering on the phone
-    3. On PC: Control Panel > Devices and Printers > right-click phone >
-       "Connect using" > "Access point"
 
   What this script does:
     - Checks for administrator privileges
     - Detects whether the phone is already connected via Bluetooth PAN
       -> if detected: proceeds automatically
-      -> if not detected: asks the user (Y/N) whether it is connected
+      -> if not detected: opens Settings > Bluetooth & devices > Devices and
+         presses PAN "参加する" and then "接続" automatically (UI Automation)
+      -> if that also fails: asks the user (Y/N) whether it is connected
     - Adds a firewall rule allowing inbound TCP on the given port (if missing)
     - Saves the detected IP to ntfy_ip.txt (read by notify.ps1)
     - Starts the ntfy server in the background
@@ -51,8 +51,91 @@ function Get-BluetoothPanInfo {
     return [PSCustomObject]@{ Adapter = $adapter; IP = $ip }
 }
 
+# Open Settings > Bluetooth & devices > Devices and press the PAN "参加する" (Join)
+# button, then "接続" (Connect) in the confirmation dialog, via UI Automation.
+# Returns the PAN info on success, $null otherwise.
+function Connect-BluetoothPan {
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $AE = [System.Windows.Automation.AutomationElement]
+    $TS = [System.Windows.Automation.TreeScope]
+    $findSettings = {
+        $AE::RootElement.FindFirst($TS::Children,
+            (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, "設定")))
+    }
+    $findButton = {
+        param($root, $property, $value)
+        $cond = New-Object System.Windows.Automation.AndCondition(
+            (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)),
+            (New-Object System.Windows.Automation.PropertyCondition($property, $value)))
+        $root.FindFirst($TS::Descendants, $cond)
+    }
+
+    Start-Process "ms-settings:connecteddevices"
+
+    # Wait for the "参加する" button; expand collapsed device entries if it is hidden
+    $joinBtn = $null
+    for ($i = 0; $i -lt 15 -and -not $joinBtn; $i++) {
+        Start-Sleep -Seconds 1
+        $settings = & $findSettings
+        if (-not $settings) { continue }
+        $joinBtn = & $findButton $settings $AE::NameProperty "参加する"
+        if (-not $joinBtn) {
+            $expanders = $settings.FindAll($TS::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, "EntityItemButton")))
+            foreach ($ex in $expanders) {
+                # Some devices (e.g. USB drives) have no expander pattern
+                $pattern = $null
+                if ($ex.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern) -and
+                    $pattern.Current.ExpandCollapseState -eq "Collapsed") { $pattern.Expand() }
+            }
+        }
+    }
+    if (-not $joinBtn) {
+        Write-Host "設定画面に「参加する」ボタンが見つかりませんでした。" -ForegroundColor Yellow
+        return $null
+    }
+    $joinBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+
+    # Confirmation dialog: primary button "接続"
+    $connectBtn = $null
+    for ($i = 0; $i -lt 10 -and -not $connectBtn; $i++) {
+        Start-Sleep -Seconds 1
+        $connectBtn = & $findButton (& $findSettings) $AE::AutomationIdProperty "PrimaryButton"
+    }
+    if (-not $connectBtn) {
+        Write-Host "確認ダイアログの「接続」ボタンが見つかりませんでした。" -ForegroundColor Yellow
+        return $null
+    }
+    $connectBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+
+    # Wait for the adapter to come up and get an IP from the phone
+    $info = $null
+    for ($i = 0; $i -lt 20 -and -not $info; $i++) {
+        Start-Sleep -Seconds 1
+        $info = Get-BluetoothPanInfo
+    }
+
+    if ($info) {
+        # Close the Settings window we opened
+        $settings = & $findSettings
+        if ($settings) {
+            try { $settings.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close() } catch {}
+        }
+    }
+    return $info
+}
+
 # --- Bluetooth PAN connection check ---
 $btInfo = Get-BluetoothPanInfo
+
+if (-not $btInfo) {
+    Write-Host "Bluetooth PAN未接続のため、自動で接続を試みます..." -ForegroundColor Yellow
+    try {
+        $btInfo = Connect-BluetoothPan
+    } catch {
+        Write-Host "自動接続中にエラーが発生しました: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
 
 if ($btInfo) {
     Write-Host "Bluetooth PAN接続を検出しました（アダプタ: $($btInfo.Adapter.Name)）。自動で続行します。" -ForegroundColor Green
