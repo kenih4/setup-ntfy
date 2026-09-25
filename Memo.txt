@@ -64,11 +64,20 @@ Set-ScheduledTask -TaskName "ntfy-autostart" -Action $action -Settings $settings
 
 
 テスト通知の送り方
-.\notify.ps1 -Message "テスト"
+C:\Users\kenic\Dropbox\gitdir\setup-ntfy\notify.ps1 -Message "テストtest"
 
 
 ＜状態が Up になっていることを確認します＞
 Get-NetAdapter | Where-Object InterfaceDescription -match Bluetooth
+
+
+
+<Bluetooth側のPCのIP>って接続するたびに毎回変わってしまうの？
+mDNS / ホスト名でアクセス: http://<PCのコンピュータ名>.local:8080 のような形にできれば、IPが変わっても追従できますが、AndroidのBluetooth PAN環境でmDNSが動くかは機種依存で確実ではありません
+＜mDNS用のポート（UDP 5353）をファイアウォールで許可する＞
+管理者権限のPowerShellで実行します。
+New-NetFirewallRule -DisplayName "mDNS 5353" -Direction Inbound -Protocol UDP -LocalPort 5353 -Action Allow -Profile Any
+->ダメだ
 
 
 ＜PC側の設定について＞
