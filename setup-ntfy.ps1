@@ -210,6 +210,10 @@ if (-not (Start-BluetoothHotspot)) {
 }
 Write-Host "モバイルホットスポット（Bluetooth）はONです。" -ForegroundColor Green
 
+Write-Host ""
+Write-Host "ここまで完了しました（モバイルホットスポットを Bluetooth でON）。" -ForegroundColor Cyan
+Read-Host "Enterキーを押すと次の処理（ファイアウォール設定・ntfyサーバー起動）に進みます" | Out-Null
+
 # --- Firewall rule (add if missing) ---
 $ruleName = "ntfy $Port"
 if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
