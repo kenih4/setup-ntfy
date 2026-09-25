@@ -30,7 +30,15 @@ if (-not $ip) {
 }
 
 $url = "http://${ip}:$Port/$Topic"
-curl.exe -sS -d $Message $url
+# Send the body as UTF-8 bytes via a temp file (passing $Message as an argument
+# gets it converted to the ANSI code page, which ntfy rejects as an "attachment").
+$tmp = [System.IO.Path]::GetTempFileName()
+try {
+    [System.IO.File]::WriteAllBytes($tmp, [System.Text.Encoding]::UTF8.GetBytes($Message))
+    curl.exe -sS -f --data-binary "@$tmp" $url
+} finally {
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to send -> $url (is the ntfy server running? Start setup-ntfy.ps1 and keep its window open.)" -ForegroundColor Red
