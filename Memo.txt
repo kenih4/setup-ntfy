@@ -80,6 +80,30 @@ New-NetFirewallRule -DisplayName "mDNS 5353" -Direction Inbound -Protocol UDP -L
 ->ダメだ
 
 
+＜どのBluetoothプロファイルで接続されているか確認する方法＞
+この通信は PAN（Personal Area Network Profile）。PCが NAP（ネットワーク提供側、192.168.138.1）、スマホが PANU（参加側）。
+※スマホの「電話」「メディアのオーディオ」「連絡先と通話履歴へのアクセス」は別のプロファイル（HFP / A2DP / PBAP）で、この通信には無関係
+
+1. PANアダプタの状態（Status が Up なら PAN で接続中）
+Get-NetAdapter | Where-Object InterfaceDescription -match "Personal Area Network"
+
+2. ホットスポットに接続している端末（PCがNAPで、スマホが参加していることの確認）
+   設定 > モバイル ホットスポット の「接続されているデバイス」でも見られる
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Networking.Connectivity.NetworkInformation, Windows.Networking.Connectivity, ContentType = WindowsRuntime]
+$null = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager, Windows.Networking.NetworkOperators, ContentType = WindowsRuntime]
+$p = [Windows.Networking.Connectivity.NetworkInformation]::GetConnectionProfiles() | Select-Object -First 1
+$m = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($p)
+$m.GetTetheringClients() | ForEach-Object { $_.MacAddress; $_.HostNames.DisplayName }
+
+3. スマホ側
+   設定 > Bluetooth >「SES」の ⚙ で「インターネット アクセス」がON・接続済みなら PANU として接続中
+
+※プロファイルごとの接続状態を一覧する標準の方法はない（デバイスのプロパティでは機器全体の接続状態しか分からない）。
+  実際の通信を見たい場合は、Bluetooth Virtual Sniffer（BTVS）+ Wireshark、またはAndroidの開発者向けオプション
+  「Bluetooth HCI スヌープログ」で記録すると、BNEP（PANの通信）が流れているのを確認できる
+
+
 ＜PC側の設定について＞
 https://keep.google.com/#NOTE/1p1jHD9BfAV3LaCgUHSevKMJmqHmtH-4tWE8NRxbiMMdW88RkNdkbjeivNu9T_w
 
