@@ -170,7 +170,8 @@ function Start-BluetoothHotspot {
             (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, "Bluetooth")))
         if (-not $item) {
             try { $expand.Collapse() } catch {}
-            Write-Host "「共有」の選択肢に Bluetooth が見つかりませんでした。" -ForegroundColor Yellow
+            Write-Host "Windowsが「共有」の選択肢に Bluetooth を出していません（Wi-Fi のみになっています）。" -ForegroundColor Yellow
+            Write-Host "PCのBluetoothを OFF→ON しても直らない場合は、PCを再起動してください（ホットスポットのサービスが固まっていることがあります）。" -ForegroundColor Yellow
             return $false
         }
         $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
