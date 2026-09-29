@@ -196,6 +196,36 @@ function Start-BluetoothHotspot {
     return $false
 }
 
+# The hotspot needs a network to share (Wi-Fi etc.); without one the Settings
+# page shows "...接続できないため、モバイル ホットスポットを設定できません"
+function Test-NetworkForHotspot {
+    return [bool][Windows.Networking.Connectivity.NetworkInformation]::GetInternetConnectionProfile()
+}
+
+function Wait-NetworkForHotspot([int]$timeoutSeconds = 120) {
+    if (Test-NetworkForHotspot) { return $true }
+    Write-Host "Wi-Fi などのネットワーク接続を待っています（最大 $timeoutSeconds 秒）..." -ForegroundColor Yellow
+    for ($i = 0; $i -lt $timeoutSeconds; $i += 2) {
+        Start-Sleep -Seconds 2
+        if (Test-NetworkForHotspot) { return $true }
+    }
+    return $false
+}
+
+# The Settings page does not refresh by itself (e.g. after Wi-Fi reconnects),
+# so reopen it and retry a few times
+function Start-BluetoothHotspotWithRetry([int]$maxAttempts = 3) {
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        if ($attempt -gt 1) {
+            Write-Host "設定画面を開き直して再試行します（$attempt/$maxAttempts）..." -ForegroundColor Yellow
+            Close-Settings
+            Start-Sleep -Seconds 5
+        }
+        if (Start-BluetoothHotspot) { return $true }
+    }
+    return $false
+}
+
 # PC's IPv4 address on the Bluetooth network (only present while the phone is connected)
 function Get-BluetoothIp {
     $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match "Bluetooth" -and $_.Status -eq "Up" }
@@ -205,7 +235,12 @@ function Get-BluetoothIp {
 }
 
 # --- Mobile Hotspot (ON, shared over Bluetooth) ---
-if (-not (Start-BluetoothHotspot)) {
+if (-not (Wait-NetworkForHotspot)) {
+    Write-Host "Wi-Fi などのネットワークに接続されていないため、モバイルホットスポットをONにできません。" -ForegroundColor Red
+    Write-Host "ネットワークに接続してから、もう一度実行してください。" -ForegroundColor Red
+    exit 1
+}
+if (-not (Start-BluetoothHotspotWithRetry)) {
     Write-Host "設定 > ネットワークとインターネット > モバイル ホットスポット で、共有を「Bluetooth」にしてオンにしてから、もう一度実行してください。" -ForegroundColor Red
     exit 1
 }
@@ -262,6 +297,7 @@ Write-Host ""
 $notifyScript = Join-Path $PSScriptRoot "notify.ps1"
 $phoneConnected = $false
 $reminded = $false
+$networkWaitShown = $false
 
 Write-Host "ntfyサーバーが稼働中です（終了するには Ctrl+C。ウィンドウを閉じるとサーバーも止まります）..." -ForegroundColor Green
 
@@ -291,10 +327,18 @@ while (-not $ntfyProcess.HasExited) {
         }
     }
 
-    # The hotspot can go off (e.g. Wi-Fi reconnect); turn it back on
+    # The hotspot can go off (e.g. Wi-Fi reconnect); turn it back on once the
+    # network is back (it cannot be turned on without one)
     if (-not (Test-HotspotOn)) {
-        Write-Host "モバイルホットスポットがOFFになっていたため、ONにし直します..." -ForegroundColor Yellow
-        Start-BluetoothHotspot | Out-Null
+        if (Test-NetworkForHotspot) {
+            Write-Host "モバイルホットスポットがOFFになっていたため、ONにし直します..." -ForegroundColor Yellow
+            Start-BluetoothHotspotWithRetry | Out-Null
+        } elseif (-not $networkWaitShown) {
+            Write-Host "モバイルホットスポットがOFFです。Wi-Fi などのネットワークが戻るのを待っています..." -ForegroundColor Yellow
+            $networkWaitShown = $true
+        }
+    } else {
+        $networkWaitShown = $false
     }
 
     Start-Sleep -Seconds 10
