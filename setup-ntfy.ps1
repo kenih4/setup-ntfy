@@ -66,6 +66,62 @@ function Wait-AsyncAction($action) {
     $task.Wait(-1) | Out-Null
 }
 
+$asTaskOperation = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+    $_.Name -eq "AsTask" -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+} | Select-Object -First 1
+
+function Wait-AsyncOperation($operation, [Type]$resultType) {
+    $task = $asTaskOperation.MakeGenericMethod($resultType).Invoke($null, @($operation))
+    $task.Wait(-1) | Out-Null
+    return $task.Result
+}
+
+# --- Bluetooth radio (Windows.Devices.Radios) ---
+# "Share over: Bluetooth" disappears from the hotspot page while Bluetooth is off
+$null = [Windows.Devices.Radios.Radio, Windows.System.Devices, ContentType = WindowsRuntime]
+
+function Get-BluetoothRadio {
+    $radios = Wait-AsyncOperation ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) `
+        ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+    return $radios | Where-Object { $_.Kind -eq "Bluetooth" } | Select-Object -First 1
+}
+
+function Set-BluetoothRadio([string]$state) {
+    $radio = Get-BluetoothRadio
+    if (-not $radio) { return $false }
+    if ($radio.State -eq $state) { return $true }
+    $status = Wait-AsyncOperation ($radio.SetStateAsync($state)) ([Windows.Devices.Radios.RadioAccessStatus])
+    return $status -eq "Allowed"
+}
+
+function Enable-BluetoothRadio {
+    $radio = Get-BluetoothRadio
+    if (-not $radio) {
+        Write-Host "PCのBluetoothが見つかりませんでした。" -ForegroundColor Yellow
+        return
+    }
+    if ($radio.State -ne "On") {
+        Write-Host "PCのBluetoothがOFFのため、ONにします..." -ForegroundColor Yellow
+        if (Set-BluetoothRadio "On") { Start-Sleep -Seconds 3 }
+        else { Write-Host "BluetoothをONにできませんでした。手動でONにしてください。" -ForegroundColor Yellow }
+    }
+}
+
+# Turn Bluetooth OFF -> ON (Bluetooth mice/keyboards/earphones disconnect briefly)
+function Restart-BluetoothRadio {
+    Write-Host "PCのBluetoothを OFF→ON します（Bluetoothのマウス・キーボード等も一時的に切れます）..." -ForegroundColor Yellow
+    if (-not (Set-BluetoothRadio "Off")) {
+        Write-Host "BluetoothをOFFにできませんでした。" -ForegroundColor Yellow
+        return
+    }
+    Start-Sleep -Seconds 3
+    if (-not (Set-BluetoothRadio "On")) {
+        Write-Host "BluetoothをONに戻せませんでした。手動でONにしてください。" -ForegroundColor Red
+        return
+    }
+    Start-Sleep -Seconds 5
+}
+
 # The operational state is global, so any connection profile will do
 function Test-HotspotOn {
     foreach ($p in [Windows.Networking.Connectivity.NetworkInformation]::GetConnectionProfiles()) {
@@ -171,7 +227,7 @@ function Start-BluetoothHotspot {
         if (-not $item) {
             try { $expand.Collapse() } catch {}
             Write-Host "Windowsが「共有」の選択肢に Bluetooth を出していません（Wi-Fi のみになっています）。" -ForegroundColor Yellow
-            Write-Host "PCのBluetoothを OFF→ON しても直らない場合は、PCを再起動してください（ホットスポットのサービスが固まっていることがあります）。" -ForegroundColor Yellow
+            $script:BluetoothOptionMissing = $true
             return $false
         }
         $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
@@ -213,15 +269,27 @@ function Wait-NetworkForHotspot([int]$timeoutSeconds = 120) {
 }
 
 # The Settings page does not refresh by itself (e.g. after Wi-Fi reconnects),
-# so reopen it and retry a few times
+# so reopen it and retry a few times. If the "Bluetooth" share option is
+# missing, turn Bluetooth OFF -> ON once before retrying.
 function Start-BluetoothHotspotWithRetry([int]$maxAttempts = 3) {
+    Enable-BluetoothRadio
+    $radioRestarted = $false
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         if ($attempt -gt 1) {
             Write-Host "設定画面を開き直して再試行します（$attempt/$maxAttempts）..." -ForegroundColor Yellow
             Close-Settings
             Start-Sleep -Seconds 5
         }
+        $script:BluetoothOptionMissing = $false
         if (Start-BluetoothHotspot) { return $true }
+        if ($script:BluetoothOptionMissing -and -not $radioRestarted) {
+            Close-Settings
+            Restart-BluetoothRadio
+            $radioRestarted = $true
+        }
+    }
+    if ($script:BluetoothOptionMissing) {
+        Write-Host "BluetoothをOFF→ONしても直らなかったため、PCを再起動してください（ホットスポットのサービスが固まっていることがあります）。" -ForegroundColor Red
     }
     return $false
 }
