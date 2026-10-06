@@ -63,6 +63,20 @@ PCがアドレスを割り振る側になるため、PCのアドレスは常に 
 .\setup-ntfy.ps1 -NtfyPath "C:\ntfy\ntfy.exe"
 ```
 
+### `hotspot-wifi.ps1`（モバイルホットスポットを Wi-Fi でONにするだけ）
+
+ntfyとは関係なく、モバイルホットスポットを「共有: Wi-Fi」でONにするだけのスクリプトです
+（ファイアウォール設定・ntfyサーバー起動はしません。管理者権限も不要）。
+
+```powershell
+.\hotspot-wifi.ps1
+```
+
+- ネットワーク（Wi-Fi等）がつながるまで最大2分待つ
+- 設定画面を自動操作して「共有: Wi-Fi」でONにする（Bluetoothで共有中なら切り替える）
+- ONにした後、ホットスポットのネットワーク名とパスワードを表示する
+- 実行すると Bluetooth での共有は止まるので、ntfy用に戻すときは `setup-ntfy.ps1` を実行する
+
 ### `notify.ps1`（通知送信）
 
 `setup-ntfy.ps1` でサーバーを起動した状態で、別のPowerShellから実行します。
