@@ -90,6 +90,65 @@ ntfyとは関係なく、モバイルホットスポットを「共有: Wi-Fi」
 .\notify.ps1 -Message "ビルド完了" -Topic "mytopic" -Port 8080
 ```
 
+## ログオン時に自動起動する（タスクスケジューラ）
+
+`setup-ntfy.ps1` をタスク「ntfy-autostart」としてタスクスケジューラに登録し、ログオン時に自動で実行します。
+コマンドはすべて **管理者として開いた PowerShell** で実行します。
+
+### 新しく登録する
+
+```powershell
+$scriptPath = "C:\Users\kenic\Dropbox\gitdir\setup-ntfy\setup-ntfy.ps1"
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoExit -ExecutionPolicy Bypass -File `"$scriptPath`""
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+Register-ScheduledTask -TaskName "ntfy-autostart" -Action $action -Trigger $trigger -Principal $principal -Settings $settings
+```
+
+設定の意味:
+- `-NoExit`: エラーで止まってもウィンドウを残す（`-WindowStyle Hidden` は付けない＝ウィンドウを表示する）
+- `-LogonType Interactive`: ログオン中のユーザーとして実行する（設定画面の自動操作に必要）
+- `-RunLevel Highest`: 管理者権限で実行する（ファイアウォール設定に必要）
+- `-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`: バッテリー駆動中でも開始・継続する
+- `-ExecutionTimeLimit ([TimeSpan]::Zero)`: 実行時間の上限（既定72時間）をなくす
+
+### 登録済みのタスクの設定を変える
+
+① 実行中のタスクを止める（入力待ちで止まっている場合など）:
+```powershell
+Stop-ScheduledTask -TaskName "ntfy-autostart"
+```
+
+② 設定を変える（ウィンドウを表示、エラー時もウィンドウを残す、バッテリー駆動中でも動かす、時間制限なし）:
+```powershell
+$scriptPath = "C:\Users\kenic\Dropbox\gitdir\setup-ntfy\setup-ntfy.ps1"
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoExit -ExecutionPolicy Bypass -File `"$scriptPath`""
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+Set-ScheduledTask -TaskName "ntfy-autostart" -Action $action -Settings $settings
+```
+
+③ すぐに試す（ログオンし直さなくても実行できる）:
+```powershell
+Start-ScheduledTask -TaskName "ntfy-autostart"
+```
+
+### 確認・削除
+
+```powershell
+# 登録内容を確認する
+(Get-ScheduledTask -TaskName "ntfy-autostart").Actions.Arguments
+(Get-ScheduledTask -TaskName "ntfy-autostart").Settings | Format-List DisallowStartIfOnBatteries, StopIfGoingOnBatteries, ExecutionTimeLimit
+
+# 削除する
+Unregister-ScheduledTask -TaskName "ntfy-autostart" -Confirm:$false
+```
+
+注意:
+- `setup-ntfy.ps1` はホットスポットをONにした後、**Enterキーを押すまで止まります**。
+  自動起動したときも、表示されたウィンドウでEnterを押すとntfyサーバーが起動します。
+- ウィンドウを閉じるとntfyサーバーも止まるので、邪魔なときは最小化してください。
+
 ## 注意点
 
 - **出発前に必ず一度、Wi-Fiを切った状態で一連の流れを通しでテストする**
